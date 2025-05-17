@@ -1,8 +1,8 @@
 {
   "name": "Resume Roaster Dev Container",
-  "dockercomposeFile": "docker-compose.yml",
+  "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
-  "workspaceFolder": "/workspaceFolder/${localWorkspaceFolderBasename}",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "remoteUser": "root",
   "customizations": {
     "vscode": {
@@ -26,6 +26,7 @@
       "python.linting.enabled": true,
       "python.linting.pylintEnabled": true,
       "python.autoComplete.addBrackets": true,
+
       "editor.defaultFormatter": "ms-python.black-formatter",
       "editor.formatOnSave": true
     }
