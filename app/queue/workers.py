@@ -10,7 +10,8 @@ load_dotenv()
 
 
 client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY")
+    api_key=os.environ.get("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
 
@@ -50,29 +51,47 @@ async def process_file(id: str, file_path: str):
 
     images_base64 = [encode_image(img) for img in images]
 
-    result = client.responses.create(
-        model="gpt-4.1",
-        input=[
+    response = client.chat.completions.create(
+        model="gemini-2.0-flash",
+        messages=[
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text",
-                        "text": "Based on the resume below, tell what can be improved and what are the mistakes."},
                     {
-                        # flake8: noqa
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{images_base64[0]}",
+                        "type": "text",
+                        "text": (
+                            "You are an expert resume reviewer. Given the following resume image, "
+                            "analyze it and return your critique and suggestions for improvement in "
+                            "the following format (no code block, just plain text):\n\n"
+                            "Here's a detailed critique and suggestions for improvement based on the "
+                            "provided resume:\n\n"
+                            "What’s Good:\n\n"
+                            "<bullet points for strengths>\n\n"
+                            "What Can Be Improved & Mistakes Noted:\n\n"
+                            "<numbered and bulleted list of issues, grouped by section as in the example>\n\n"
+                            "Summary Table\nSection\tSuggestions/Errors\n<summary table as in the example>\n\n"
+                            "In summary:\n<short summary paragraph>\n\n"
+                            "Use clear headings, bullet points, and a summary table as shown. "
+                            "Do not return a Python dictionary or code block."
+                        )
                     },
-                ],
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{images_base64[0]}"
+                        }
+                    }
+                ]
             }
-        ],
+        ]
     )
-    # print(result.output_text)
 
-    await files_collection.update_one({"_id": ObjectId(id)}, {
-        "$set": {
+    await files_collection.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": {
             "status": "processed",
-            "result": result.output_text
-        }
-    })
+            "result": response.choices[0].message.content
+            if response.choices else "No response"
+        }}
+    )
 
