@@ -6,15 +6,21 @@ API_URL = "http://localhost:8000"
 
 st.title("AI-Powered Resume Reviewer")
 
-uploaded_file = st.file_uploader("Upload your resume (PDF)", type=["pdf"])
+resume_file = st.file_uploader("Upload your resume (PDF)", type=["pdf"], 
+                               key="resume")
+jd_file = st.file_uploader("Upload the job description (PDF)", type=["pdf"], 
+                           key="jd")
 
-if uploaded_file is not None:
+if resume_file is not None and jd_file is not None:
     with st.spinner("Uploading..."):
-        files = {"file": (uploaded_file.name, uploaded_file, "application/pdf")}
+        files = {
+            "resume": (resume_file.name, resume_file, "application/pdf"),
+            "jd": (jd_file.name, jd_file, "application/pdf"),
+        }
         response = requests.post(f"{API_URL}/upload", files=files)
     if response.status_code == 200:
         file_id = response.json()["file_id"]
-        st.success("File uploaded! Processing...")
+        st.success("Files uploaded! Processing...")
 
         status_placeholder = st.empty()
         result_placeholder = st.empty()
@@ -38,7 +44,7 @@ if uploaded_file is not None:
                 break
             time.sleep(2)
     else:
-        st.error("Failed to upload file. Please try again.")
+        st.error("Failed to upload files. Please try again.")
 
 st.markdown("---")
 st.caption("Powered by FastAPI backend and OpenAI/GPT-4 Vision")

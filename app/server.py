@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, Path
+from fastapi import FastAPI, UploadFile, Path, File
 from .utils.file import save_to_disk
 from .queue.q import q
 from .db.collections.files import files_collection, FileSchema
@@ -30,28 +30,37 @@ async def get_file_by_id(id: str = Path(..., description="ID of the file")):
 
 @app.post("/upload")
 async def upload_file(
-    file: UploadFile
+    resume: UploadFile = File(...),
+    jd: UploadFile = File(...)
 ):
 
     db_file = await files_collection.insert_one(
         document=FileSchema(
-            name=file.filename,
-            status="saving"
+            name=resume.filename,
+            status="saving",
+            resume_path="",
+            jd_path="",
+            rewritten_jd=None,
+            strengths=None,
+            weaknesses=None,
+            improvements=None,
+            result=None
         )
     )
+    base_path = f"/mnt/uploads/{str(db_file.inserted_id)}"
+    resume_path = f"{base_path}/{resume.filename}"
+    jd_path = f"{base_path}/{jd.filename}"
 
-    file_path = f"/mnt/uploads/{str(db_file.inserted_id)}/{file.filename}"
+    await save_to_disk(file=await resume.read(), path=resume_path)
+    await save_to_disk(file=await jd.read(), path=jd_path)
 
-    await save_to_disk(file=await file.read(), path=file_path)
-
-    # Push to Queue
-    q.enqueue(process_file, str(db_file.inserted_id), file_path)
-
-    # MongoDB Save
     await files_collection.update_one({"_id": db_file.inserted_id}, {
         "$set": {
+            "resume_path": resume_path,
+            "jd_path": jd_path,
             "status": "queued"
         }
     })
 
+    q.enqueue(process_file, str(db_file.inserted_id), resume_path, jd_path)
     return {"file_id": str(db_file.inserted_id)}

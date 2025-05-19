@@ -3,16 +3,13 @@ from bson import ObjectId
 import os
 from pdf2image import convert_from_path
 import base64
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
+import pdfplumber
 
 load_dotenv()
 
-
-client = OpenAI(
-    api_key=os.environ.get("GEMINI_API_KEY"),
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-)
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 
 def encode_image(image_path):
@@ -20,78 +17,77 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-async def process_file(id: str, file_path: str):
+def extract_text_from_pdf(pdf_path):
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text += page.extract_text() or ""
+    return text
+
+
+def gemini_call(prompt):
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    response = model.generate_content(prompt)
+    return response.text
+
+
+async def process_file(id: str, resume_path: str, jd_path: str):
+    await files_collection.update_one({"_id": ObjectId(id)}, {"$set": {"status": "processing"}})
+
+    resume_text = extract_text_from_pdf(resume_path)
+    jd_text = extract_text_from_pdf(jd_path)
+
+    def rewrite_jd_node(inputs):
+        prompt = (
+            "Rewrite the following job description to make it more clear and "
+            "effective:\n\n" + inputs['jd_text']
+        )
+        rewritten_jd = gemini_call(prompt)
+        return {
+            "rewritten_jd": rewritten_jd,
+            "resume_text": inputs["resume_text"]
+        }
+
+    def compare_resume_node(inputs):
+        prompt = (
+            f"Given this job description:\n{inputs['rewritten_jd']}\n\n"
+            f"And this resume:\n{inputs['resume_text']}\n\n"
+            "Analyze the resume against the job description. "
+            "Extract the candidate's strengths, identify weaknesses or "
+            "mismatches, and recommend areas of improvement."
+        )
+        analysis = gemini_call(prompt)
+        return {"analysis": analysis}
+
+    # Build LangGraph (fix: use StateGraph for recent langgraph versions)
+    try:
+        from langgraph.graph import StateGraph
+        from typing import TypedDict
+        class State(TypedDict):
+            jd_text: str
+            resume_text: str
+            rewritten_jd: str
+            analysis: str
+        graph = StateGraph(state_schema=State)
+        graph.add_node("rewrite_jd", rewrite_jd_node)
+        graph.add_node("compare_resume", compare_resume_node)
+        graph.add_edge("rewrite_jd", "compare_resume")
+        graph.set_entry_point("rewrite_jd")
+        result = graph.run({
+            "jd_text": jd_text,
+            "resume_text": resume_text
+        })
+    except (ImportError, AttributeError, ValueError, TypeError):
+        # Fallback: run the workflow manually if StateGraph is not available
+        node1 = rewrite_jd_node({"jd_text": jd_text, "resume_text": resume_text})
+        node2 = compare_resume_node(node1)
+        result = {"rewritten_jd": node1["rewritten_jd"], "analysis": node2["analysis"]}
+
     await files_collection.update_one({"_id": ObjectId(id)}, {
         "$set": {
-            "status": "processing"
-        }
-    })
-
-    await files_collection.update_one({"_id": ObjectId(id)}, {
-        "$set": {
-            "status": "converting to images"
-        }
-    })
-
-    # Step1: Convert the PDF - Image
-    pages = convert_from_path(file_path)
-    images = []
-
-    for i, page in enumerate(pages):
-        image_save_path = f"/mnt/uploads/images/{id}/image-{i}.jpg"
-        os.makedirs(os.path.dirname(image_save_path), exist_ok=True)
-        page.save(image_save_path, 'JPEG')
-        images.append(image_save_path)
-
-    await files_collection.update_one({"_id": ObjectId(id)}, {
-        "$set": {
-            "status": "converting to images successs"
-        }
-    })
-
-    images_base64 = [encode_image(img) for img in images]
-
-    response = client.chat.completions.create(
-        model="gemini-2.0-flash",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "You are an expert resume reviewer. Given the following resume image, "
-                            "analyze it and return your critique and suggestions for improvement in "
-                            "the following format (no code block, just plain text):\n\n"
-                            "Here's a detailed critique and suggestions for improvement based on the "
-                            "provided resume:\n\n"
-                            "What’s Good:\n\n"
-                            "<bullet points for strengths>\n\n"
-                            "What Can Be Improved & Mistakes Noted:\n\n"
-                            "<numbered and bulleted list of issues, grouped by section as in the example>\n\n"
-                            "Summary Table\nSection\tSuggestions/Errors\n<summary table as in the example>\n\n"
-                            "In summary:\n<short summary paragraph>\n\n"
-                            "Use clear headings, bullet points, and a summary table as shown. "
-                            "Do not return a Python dictionary or code block."
-                        )
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{images_base64[0]}"
-                        }
-                    }
-                ]
-            }
-        ]
-    )
-
-    await files_collection.update_one(
-        {"_id": ObjectId(id)},
-        {"$set": {
             "status": "processed",
-            "result": response.choices[0].message.content
-            if response.choices else "No response"
-        }}
-    )
+            "rewritten_jd": result["rewritten_jd"],
+            "result": result["analysis"]
+        }
+    })
 
