@@ -1,19 +1,19 @@
 # AI Powered Resume Reviewer
 
-A full-stack application that allows users to upload their resume (PDF), processes it using AI (OpenAI GPT-4 Vision), and provides detailed feedback on improvements and mistakes. The backend is built with FastAPI, MongoDB, and Redis (Valkey), and the frontend is built with Streamlit.
+A full-stack application that allows users to upload their resume (PDF), processes it using AI (OpenAI GPT-4 Vision or Google Gemini Vision), and provides detailed feedback on improvements and mistakes. The backend is built with FastAPI, MongoDB, and Redis (Valkey), and the frontend is built with Streamlit.
 
 ---
 
 ## Features
 - **Upload Resume:** Upload your PDF resume via a simple web interface.
-- **AI Review:** The backend uses OpenAI's GPT-4 Vision to analyze your resume and provide actionable feedback.
+- **AI Review:** The backend uses either OpenAI's GPT-4 Vision or Google Gemini Vision models (configurable) to analyze your resume and provide actionable feedback in a detailed, human-readable format (including markdown, tables, and summary sections).
 - **Status Tracking:** See the processing status in real time.
 - **Feedback Display:** View AI-generated feedback, including markdown and tables, directly in the frontend.
 
 ---
 
 ## Tech Stack
-- **Backend:** FastAPI, MongoDB, Redis (Valkey), RQ, OpenAI API
+- **Backend:** FastAPI, MongoDB, Redis (Valkey), RQ, OpenAI API, Google Gemini API
 - **Frontend:** Streamlit
 - **Containerization:** Docker Compose
 
@@ -28,9 +28,10 @@ cd AI_Powered_Resume_Reviewer
 ```
 
 ### 2. Set Up Environment Variables
-Create a `.env` file in the root directory and add your OpenAI API key:
+Create a `.env` file in the root directory and add your OpenAI and Gemini API keys:
 ```env
 OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=your-gemini-api-key
 ```
 
 ### 3. Start the Backend and Services
@@ -95,7 +96,7 @@ AI_Powered_Resume_Reviewer/
 
 ## Troubleshooting
 - **MongoDB/Redis connection errors:** Ensure Docker containers are running and accessible.
-- **OpenAI API errors:** Check your API key and usage limits.
+- **OpenAI/Gemini API errors:** Check your API key and usage limits for the selected provider.
 - **File upload issues:** Ensure `/mnt/uploads/` is writable by the backend.
 
 ---
